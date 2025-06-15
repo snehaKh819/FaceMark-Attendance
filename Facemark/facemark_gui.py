@@ -17,7 +17,7 @@ def gui_register_student():
     # Create a custom dialog for student registration
     dialog = ctk.CTkToplevel()
     dialog.title("Register Student")
-    dialog.geometry("400x350")  # Made taller for the test button
+    dialog.geometry("400x350")
     dialog.resizable(False, False)
     
     # Make dialog modal
@@ -90,13 +90,11 @@ def gui_register_student():
     dialog.wait_window()
 
 def gui_mark_attendance():
-    win = tk.Toplevel()
+    win = ctk.CTkToplevel()
     win.title("Upload Video")
     win.geometry("500x250")
-    win.configure(bg="#2e2e2e")
-
-    tk.Label(win, text="Select Class Video", font=("Arial", 14, "bold"),
-             bg="#2e2e2e", fg="white").pack(pady=20)
+    
+    ctk.CTkLabel(win, text="Select Class Video", font=("Arial", 14, "bold")).pack(pady=20)
 
     video_path_var = tk.StringVar()
 
@@ -113,13 +111,24 @@ def gui_mark_attendance():
         if not path:
             messagebox.showwarning("Warning", "Please select a video file.")
             return
-        threading.Thread(target=mark_attendance_from_video, args=(path,)).start()
-        messagebox.showinfo("Started", "Attendance process started. It will save a CSV after completion.")
+        
+        # Run attendance marking directly to see any errors
+        try:
+            print(f"Starting attendance marking from video: {path}")
+            mark_attendance_from_video(path)
+            messagebox.showinfo("Completed", "Attendance process completed. CSV file has been saved.")
+        except Exception as e:
+            print(f"Error during attendance marking: {e}")
+            messagebox.showerror("Attendance Error", f"An error occurred: {e}")
 
-    tk.Entry(win, textvariable=video_path_var, width=50).pack()
-    tk.Button(win, text="Browse", command=browse_video, bg="#444", fg="white").pack(pady=10)
-    tk.Button(win, text="Start Attendance", command=start_attendance,
-              bg="green", fg="white").pack(pady=10)
+    entry = ctk.CTkEntry(win, textvariable=video_path_var, width=350)
+    entry.pack(pady=10)
+    
+    button_frame = ctk.CTkFrame(win)
+    button_frame.pack(fill="x", padx=20, pady=10)
+    
+    ctk.CTkButton(button_frame, text="Browse", command=browse_video).pack(side="left", padx=10)
+    ctk.CTkButton(button_frame, text="Start Attendance", command=start_attendance).pack(side="right", padx=10)
 
 # --------- Home Page ---------
 def open_home():
