@@ -138,3 +138,36 @@ def mark_attendance_from_video(video_path, section=None):
         return True
     else:
         return False
+    
+def test_accuracy(test_images, true_labels, section=None):
+    data = load_embeddings()
+    if section is not None:
+        data = {name: info for name, info in data.items() if info.get('section') == section}
+    correct = 0
+    total = len(test_images)
+    for img_path, true_name in zip(test_images, true_labels):
+        img = cv2.imread(img_path)
+        face_cascade = cv2.CascadeClassifier(HAAR_CASCADE_FILEPATH)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+        found = False
+        for (x, y, w, h) in faces:
+            face = img[y:y + h, x:x + w]
+            face = cv2.resize(face, (160, 160))
+            emb = embedder.embeddings([face])[0]
+            best_match, best_score = None, 0.0
+            for name, info in data.items():
+                score = cosine_similarity([emb], [info['embedding']])[0][0]
+                if score > best_score:
+                    best_score = score
+                    best_match = name
+            if best_score > 0.5 and best_match == true_name:
+                correct += 1
+            found = True
+            break
+        if not found:
+            print(f"No face found in {img_path}")
+    accuracy = correct / total if total > 0 else 0
+    print(f"Accuracy: {accuracy*100:.2f}%")
+    return accuracy
+        
