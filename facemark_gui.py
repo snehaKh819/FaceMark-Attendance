@@ -7,7 +7,7 @@ import cv2
 from datetime import datetime
 import os
 import pandas as pd
-from facemark_core import register_student, mark_attendance_from_video, ensure_dirs
+from facemark_core import register_student, mark_attendance_from_video, ensure_dirs, get_registered_students, delete_registered_student
 import traceback
 
 # Session context to store faculty info
@@ -239,7 +239,7 @@ def show_login():
             text="Login",
             command=login,
             height=50,
-            font=("Arial", 14, "bold")
+            font=("Arial", 16, "bold")
         )
         login_btn.pack(fill="x", pady=(0, 10))
 
@@ -249,7 +249,7 @@ def show_login():
             text="Exit",
             command=login_win.destroy,
             height=40,
-            font=("Arial", 12, "bold"),
+            font=("Arial", 16, "bold"),
             fg_color=VIBRANT_SECONDARY,
             hover_color=VIBRANT_WARNING
         )
@@ -392,6 +392,14 @@ def open_home():
             widget.destroy()
         show_attendance_history(main_frame)
 
+    def switch_to_students():
+        if not session['current_section']:
+            messagebox.showwarning("Section Required", "Please select a section first.")
+            return
+        for widget in main_frame.winfo_children():
+            widget.destroy()
+        show_registered_students_page(main_frame)
+
     def logout():
         if messagebox.askyesno("Confirm Logout", "Are you sure you want to logout?"):
             app.destroy()
@@ -401,6 +409,7 @@ def open_home():
     create_nav_button("Register Student", switch_to_register, "🧍")
     create_nav_button("Mark Attendance", switch_to_attendance, "🎥")
     create_nav_button("Attendance History", switch_to_history, "📊")
+    create_nav_button("Registered Students", switch_to_students, "📋")
     
     # Logout button at bottom
     logout_btn = ModernButton(
@@ -493,6 +502,32 @@ def show_register_page(frame):
     )
     section_info.pack(fill="x", pady=(0, 15))
 
+    # --- Registered Students List ---
+    students_frame = ctk.CTkFrame(container, fg_color=VIBRANT_LIGHT)
+    students_frame.pack(fill="both", expand=False, padx=20, pady=10)
+    ctk.CTkLabel(
+        students_frame,
+        text="Registered Students in this Section:",
+        font=("Arial", 14, "bold"),
+        text_color=VIBRANT_PRIMARY
+    ).pack(anchor="w", padx=10, pady=(10, 5))
+
+    # Scrollable area for students
+    students_scroll = ctk.CTkScrollableFrame(students_frame, height=120)
+    students_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    def refresh_students_list():
+        for widget in students_scroll.winfo_children():
+            widget.destroy()
+        students = get_registered_students(session['current_section'])
+        if not students:
+            ctk.CTkLabel(students_scroll, text="No students registered yet.", font=("Arial", 12), text_color=VIBRANT_SECONDARY).pack(anchor="w", padx=5, pady=2)
+        else:
+            for name, roll, section in students:
+                ctk.CTkLabel(students_scroll, text=f"{name} ({roll})", font=("Arial", 12), text_color=VIBRANT_TEXT).pack(anchor="w", padx=5, pady=2)
+
+    refresh_students_list()
+
     # Preview frame
     preview_frame = ctk.CTkFrame(form_frame, fg_color=VIBRANT_LIGHT)
     preview_frame.pack(fill="x", padx=20, pady=20)
@@ -581,6 +616,7 @@ def show_register_page(frame):
         try:
             register_student(name_var.get(), roll_var.get(), session['current_section'])
             messagebox.showinfo("Success", "Student registered successfully!")
+            refresh_students_list()  # Refresh the list after registration
         except Exception as e:
             messagebox.showerror("Error", f"Failed to register student: {str(e)}")
 
@@ -617,6 +653,35 @@ def show_attendance_upload(frame):
 
     path_var = tk.StringVar()
 
+    # --- Marked Students List Frame ---
+    marked_frame = ctk.CTkFrame(container, fg_color=VIBRANT_LIGHT)
+    marked_frame.pack(fill="x", padx=20, pady=(10, 0))
+    marked_students_list = []  # Will hold the last marked students
+
+    def show_marked_students(students):
+        for widget in marked_frame.winfo_children():
+            widget.destroy()
+        ctk.CTkLabel(marked_frame, text="Attendance marked for:", font=("Arial", 16, "bold"), text_color=VIBRANT_PRIMARY).pack(anchor="w", pady=(25, 5), padx=30)
+        scroll = ctk.CTkScrollableFrame(marked_frame, height=180)
+        scroll.pack(fill="x", expand=True, padx=30, pady=(15, 15))
+        # Table headers
+        ctk.CTkLabel(scroll, text="Name", font=("Arial", 14, "bold"), width=160, text_color=VIBRANT_SECONDARY, anchor="w").grid(row=0, column=0, padx=(10, 5), pady=2, sticky="w")
+        ctk.CTkLabel(scroll, text="Roll No", font=("Arial", 14, "bold"), width=100, text_color=VIBRANT_SECONDARY, anchor="w").grid(row=0, column=1, padx=5, pady=2, sticky="w")
+        ctk.CTkLabel(scroll, text="Section", font=("Arial", 14, "bold"), width=80, text_color=VIBRANT_SECONDARY, anchor="w").grid(row=0, column=2, padx=(5, 10), pady=2, sticky="w")
+        if not students:
+            ctk.CTkLabel(scroll, text="No students recognized.", font=("Arial", 13), text_color=VIBRANT_SECONDARY).grid(row=1, column=0, columnspan=3, padx=10, pady=5, sticky="w")
+        else:
+            for idx, (name, roll) in enumerate(students, start=1):
+                ctk.CTkLabel(scroll, text=name, font=("Arial", 13), width=160, text_color=VIBRANT_TEXT, anchor="w").grid(row=idx, column=0, padx=(10, 5), pady=3, sticky="w")
+                ctk.CTkLabel(scroll, text=roll, font=("Arial", 13), width=100, text_color=VIBRANT_TEXT, anchor="w").grid(row=idx, column=1, padx=5, pady=3, sticky="w")
+                ctk.CTkLabel(scroll, text=session['current_section'], font=("Arial", 13), width=80, text_color=VIBRANT_TEXT, anchor="w").grid(row=idx, column=2, padx=(5, 10), pady=3, sticky="w")
+        # Button to go to Attendance History
+        def goto_history():
+            for widget in frame.winfo_children():
+                widget.destroy()
+            show_attendance_history(frame)
+        ctk.CTkButton(marked_frame, text="Go to Attendance History", command=goto_history, width=200).pack(pady=(10, 20))
+
     def browse():
         file = filedialog.askopenfilename(
             filetypes=[("Video files", "*.mp4 *.avi *.mov")]
@@ -636,9 +701,11 @@ def show_attendance_upload(frame):
 
         try:
             result = mark_attendance_from_video(path_var.get(), session['current_section'])
-            if result:
-                messagebox.showinfo("Success", "Attendance marked successfully!")
+            success, marked_students = result
+            if success:
+                show_marked_students(marked_students)
             else:
+                show_marked_students([])
                 messagebox.showwarning("No Attendance", "No students were recognized or registered for this section.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -698,6 +765,11 @@ def show_attendance_history(frame):
             text_color=VIBRANT_PRIMARY
         ).pack(side="left")
 
+        def refresh_history():
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+            load_attendance_logs()
+
         def download_excel():
             try:
                 # Get all CSV files
@@ -739,81 +811,164 @@ def show_attendance_history(frame):
         )
         download_btn.pack(side="right")
 
+        # Refresh button
+        refresh_btn = ModernButton(
+            header_frame,
+            text="🔄 Refresh",
+            command=refresh_history,
+            height=40
+        )
+        refresh_btn.pack(side="right", padx=(0, 10))
+
+        # Clear History button
+        def clear_history():
+            if messagebox.askyesno("Confirm Clear", "Are you sure you want to delete all attendance history? This cannot be undone."):
+                log_dir = "attendance_logs"
+                removed = False
+                if os.path.exists(log_dir):
+                    for log_file in os.listdir(log_dir):
+                        if log_file.endswith(".csv"):
+                            try:
+                                os.remove(os.path.join(log_dir, log_file))
+                                removed = True
+                            except Exception as e:
+                                show_error("Delete Error", f"Could not delete {log_file}: {str(e)}")
+                if removed:
+                    messagebox.showinfo("Success", "Attendance history cleared.")
+                else:
+                    messagebox.showinfo("Info", "No attendance logs to clear.")
+                refresh_history()
+
+        clear_btn = ModernButton(
+            header_frame,
+            text="🗑️ Clear History",
+            command=clear_history,
+            height=40,
+            fg_color=VIBRANT_WARNING,
+            hover_color=VIBRANT_ACCENT
+        )
+        clear_btn.pack(side="right", padx=(0, 10))
+
         # Create a scrollable frame for attendance records
         scroll_frame = ctk.CTkScrollableFrame(container)
         scroll_frame.pack(fill="both", expand=True)
 
-        # Get attendance logs
-        log_dir = "attendance_logs"
-        if os.path.exists(log_dir):
-            for log_file in os.listdir(log_dir):
-                if log_file.endswith(".csv"):
-                    log_path = os.path.join(log_dir, log_file)
-                    try:
-                        df = pd.read_csv(log_path)
-                        
-                        # Create a card for each log
-                        card = ctk.CTkFrame(scroll_frame, fg_color=VIBRANT_LIGHT)
-                        card.pack(fill="x", pady=5, padx=5)
-                        
-                        # Card header with date and download button
-                        card_header = ctk.CTkFrame(card, fg_color="transparent")
-                        card_header.pack(fill="x", padx=10, pady=5)
-                        
-                        ctk.CTkLabel(
-                            card_header,
-                            text=log_file.replace(".csv", ""),
-                            font=("Arial", 14, "bold"),
-                            text_color=VIBRANT_PRIMARY
-                        ).pack(side="left")
-                        
-                        def download_single_sheet(file_path=log_path, sheet_name=log_file.replace(".csv", "")):
-                            try:
-                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                excel_path = f"attendance_logs/{sheet_name}_{timestamp}.xlsx"
-                                df = pd.read_csv(file_path)
-                                df.to_excel(excel_path, engine='openpyxl', index=False)
-                                messagebox.showinfo("Success", f"Excel sheet downloaded successfully!\nSaved as: {excel_path}")
-                            except Exception as e:
-                                show_error("Download Error", str(e))
-                        
-                        ModernButton(
-                            card_header,
-                            text="📥 Download Sheet",
-                            command=lambda p=log_path, s=log_file.replace(".csv", ""): download_single_sheet(p, s),
-                            height=30,
-                            width=120
-                        ).pack(side="right")
-                        
-                        # Create a table-like display
-                        table_frame = ctk.CTkFrame(card, fg_color="transparent")
-                        table_frame.pack(fill="x", padx=10, pady=5)
-                        
-                        # Headers
-                        headers = ["Name", "Roll No", "Section", "Time"]
-                        for i, header in enumerate(headers):
+        def load_attendance_logs():
+            log_dir = "attendance_logs"
+            section = session.get('current_section')
+            if not section:
+                ctk.CTkLabel(scroll_frame, text="Please select a section to view its attendance history.", font=("Arial", 14), text_color=VIBRANT_WARNING).pack(anchor="w", padx=10, pady=10)
+                return
+            found = False
+            if os.path.exists(log_dir):
+                for log_file in os.listdir(log_dir):
+                    if log_file.endswith(".csv") and f"_{section}_" in log_file:
+                        found = True
+                        log_path = os.path.join(log_dir, log_file)
+                        try:
+                            df = pd.read_csv(log_path)
+                            # Create a card for each log
+                            card = ctk.CTkFrame(scroll_frame, fg_color=VIBRANT_LIGHT)
+                            card.pack(fill="x", pady=5, padx=5)
+                            # Card header with date and download button
+                            card_header = ctk.CTkFrame(card, fg_color="transparent")
+                            card_header.pack(fill="x", padx=10, pady=5)
                             ctk.CTkLabel(
-                                table_frame,
-                                text=header,
-                                font=("Arial", 12, "bold"),
-                                width=100,
-                                text_color=VIBRANT_SECONDARY
-                            ).grid(row=0, column=i, padx=5, pady=2)
-                        
-                        # Data rows
-                        for row_idx, (_, row) in enumerate(df.iterrows()):
-                            for col_idx, value in enumerate(row):
+                                card_header,
+                                text=log_file.replace(".csv", ""),
+                                font=("Arial", 14, "bold"),
+                                text_color=VIBRANT_PRIMARY
+                            ).pack(side="left")
+                            def download_single_sheet(file_path=log_path, sheet_name=log_file.replace(".csv", "")):
+                                try:
+                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                    excel_path = f"attendance_logs/{sheet_name}_{timestamp}.xlsx"
+                                    df = pd.read_csv(file_path)
+                                    df.to_excel(excel_path, engine='openpyxl', index=False)
+                                    messagebox.showinfo("Success", f"Excel sheet downloaded successfully!\nSaved as: {excel_path}")
+                                except Exception as e:
+                                    show_error("Download Error", str(e))
+                            ModernButton(
+                                card_header,
+                                text="📥 Download Sheet",
+                                command=lambda p=log_path, s=log_file.replace(".csv", ""): download_single_sheet(p, s),
+                                height=30,
+                                width=120
+                            ).pack(side="right")
+                            # Create a table-like display
+                            table_frame = ctk.CTkFrame(card, fg_color="transparent")
+                            table_frame.pack(fill="x", padx=10, pady=5)
+                            # Headers
+                            headers = ["Name", "Roll No", "Section", "Time"]
+                            for i, header in enumerate(headers):
                                 ctk.CTkLabel(
                                     table_frame,
-                                    text=str(value),
-                                    font=("Arial", 12),
+                                    text=header,
+                                    font=("Arial", 12, "bold"),
                                     width=100,
-                                    text_color=VIBRANT_TEXT
-                                ).grid(row=row_idx+1, column=col_idx, padx=5, pady=2)
-                    except Exception as e:
-                        print(f"Error reading {log_file}: {str(e)}")
+                                    text_color=VIBRANT_SECONDARY
+                                ).grid(row=0, column=i, padx=5, pady=2)
+                            # Data rows
+                            for row_idx, (_, row) in enumerate(df.iterrows()):
+                                for col_idx, value in enumerate(row):
+                                    ctk.CTkLabel(
+                                        table_frame,
+                                        text=str(value),
+                                        font=("Arial", 12),
+                                        width=100,
+                                        text_color=VIBRANT_TEXT
+                                    ).grid(row=row_idx+1, column=col_idx, padx=5, pady=2)
+                        except Exception as e:
+                            print(f"Error reading {log_file}: {str(e)}")
+            if not found:
+                ctk.CTkLabel(scroll_frame, text=f"No attendance history for section {section}.", font=("Arial", 14), text_color=VIBRANT_SECONDARY).pack(anchor="w", padx=10, pady=10)
+        # Initial load
+        load_attendance_logs()
     except Exception as e:
         show_error("Attendance History Error", str(e))
+
+def show_registered_students_page(frame):
+    container = ctk.CTkFrame(frame, fg_color=VIBRANT_LIGHT)
+    container.pack(fill="both", expand=True, padx=40, pady=40)
+
+    ctk.CTkLabel(
+        container,
+        text=f"Registered Students - Section {session['current_section']}",
+        font=("Arial", 24, "bold"),
+        text_color=VIBRANT_PRIMARY
+    ).pack(anchor="w", pady=(20, 20), padx=20)
+
+    students_scroll = ctk.CTkScrollableFrame(container, height=400, fg_color=VIBRANT_LIGHT)
+    students_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    # Table headers (only Name and Roll No)
+    ctk.CTkLabel(students_scroll, text="Name", font=("Arial", 14, "bold"), width=200, text_color=VIBRANT_SECONDARY, anchor="w").grid(row=0, column=0, padx=10, pady=2, sticky="w")
+    ctk.CTkLabel(students_scroll, text="Roll No", font=("Arial", 14, "bold"), width=120, text_color=VIBRANT_SECONDARY, anchor="w").grid(row=0, column=1, padx=10, pady=2, sticky="w")
+    ctk.CTkLabel(students_scroll, text="", width=60).grid(row=0, column=2)  # For delete button column
+
+    students = get_registered_students(session['current_section'])
+    def refresh():
+        for widget in students_scroll.winfo_children():
+            widget.destroy()
+        ctk.CTkLabel(students_scroll, text="Name", font=("Arial", 14, "bold"), width=200, text_color=VIBRANT_SECONDARY, anchor="w").grid(row=0, column=0, padx=10, pady=2, sticky="w")
+        ctk.CTkLabel(students_scroll, text="Roll No", font=("Arial", 14, "bold"), width=120, text_color=VIBRANT_SECONDARY, anchor="w").grid(row=0, column=1, padx=10, pady=2, sticky="w")
+        ctk.CTkLabel(students_scroll, text="", width=60).grid(row=0, column=2)
+        students = get_registered_students(session['current_section'])
+        if not students:
+            ctk.CTkLabel(students_scroll, text="No students registered yet.", font=("Arial", 14), text_color=VIBRANT_SECONDARY).grid(row=1, column=0, columnspan=3, padx=5, pady=10, sticky="w")
+        else:
+            for idx, (name, roll, section) in enumerate(students, start=1):
+                ctk.CTkLabel(students_scroll, text=name, font=("Arial", 13), width=200, text_color=VIBRANT_TEXT, anchor="w").grid(row=idx, column=0, padx=10, pady=4, sticky="w")
+                ctk.CTkLabel(students_scroll, text=roll, font=("Arial", 13), width=120, text_color=VIBRANT_TEXT, anchor="w").grid(row=idx, column=1, padx=10, pady=4, sticky="w")
+                def make_delete_callback(student_name):
+                    return lambda: delete_student(student_name)
+                del_btn = ModernButton(students_scroll, text="🗑️", width=40, height=32, fg_color=VIBRANT_WARNING, hover_color=VIBRANT_ACCENT, command=make_delete_callback(name))
+                del_btn.grid(row=idx, column=2, padx=5, pady=4)
+    def delete_student(student_name):
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete {student_name}? This cannot be undone."):
+            delete_registered_student(student_name)
+            refresh()
+    refresh()
 
 if __name__ == "__main__":
     try:

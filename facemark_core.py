@@ -82,7 +82,7 @@ def register_student(name, roll_no, section):
 def mark_attendance_from_video(video_path, section=None):
     if not os.path.exists(video_path):
         print("[!] Video not found")
-        return False
+        return False, None
 
     data = load_embeddings()
     # Filter by section if provided
@@ -135,9 +135,11 @@ def mark_attendance_from_video(video_path, section=None):
                 info = student_info[name]
                 f.write(f"{name},{info['roll_no']},{info['section']},{datetime.now().strftime('%H:%M:%S')}\n")
         print(f"[✓] Attendance saved to {filename}")
-        return True
+        # Prepare marked students list for GUI
+        marked_students = [(name, student_info[name]['roll_no']) for name in marked]
+        return True, marked_students
     else:
-        return False
+        return False, None
     
 def test_accuracy(test_images, true_labels, section=None):
     data = load_embeddings()
@@ -147,6 +149,9 @@ def test_accuracy(test_images, true_labels, section=None):
     total = len(test_images)
     for img_path, true_name in zip(test_images, true_labels):
         img = cv2.imread(img_path)
+        if img is None:
+            print(f"Could not read image: {img_path}")
+            continue
         face_cascade = cv2.CascadeClassifier(HAAR_CASCADE_FILEPATH)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.3, 5)
@@ -170,4 +175,32 @@ def test_accuracy(test_images, true_labels, section=None):
     accuracy = correct / total if total > 0 else 0
     print(f"Accuracy: {accuracy*100:.2f}%")
     return accuracy
+        
+def get_registered_students(section=None):
+    """Return a list of (name, roll_no, section) for all registered students, optionally filtered by section."""
+    data = load_embeddings()
+    students = []
+    for name, info in data.items():
+        if section is None or info.get('section') == section:
+            students.append((name, info.get('roll_no'), info.get('section')))
+    return students
+        
+def delete_registered_student(name):
+    """Delete a registered student by name: remove from embeddings and delete their image directory."""
+    data = load_embeddings()
+    if name in data:
+        del data[name]
+        save_embeddings(data)
+    # Remove student images directory if exists
+    student_dir = os.path.join(IMAGES_DIR, name)
+    if os.path.exists(student_dir):
+        import shutil
+        shutil.rmtree(student_dir)
+        
+if __name__ == "__main__":
+    # Example usage for testing accuracy
+    # Replace these with actual image paths and labels as needed
+    test_images = ["student_images/Student1/1.jpg", "student_images/Student2/1.jpg"]
+    true_labels = ["Student1", "Student2"]
+    test_accuracy(test_images, true_labels)
         
